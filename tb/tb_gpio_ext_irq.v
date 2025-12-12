@@ -65,6 +65,12 @@ module tb_gpio_ext_irq();
   localparam BUTTON_R_BIT = 6;
   localparam BUTTON_C_BIT = 7;
 
+  // Timing parameters for button simulation
+  localparam RESET_SETTLE_DELAY = 500;      // Time after reset to settle (in time units)
+  localparam SW_INIT_CYCLES = 5000;         // Cycles to wait for software initialization
+  localparam BUTTON_PRESS_CYCLES = 100;     // Default button press duration in cycles
+  localparam INTER_PRESS_CYCLES = 500;      // Delay between button presses
+
   // GPIO input signals - directly connected to SoC
   reg [31:0] gpio_input;
   
@@ -257,10 +263,10 @@ module tb_gpio_ext_irq();
   // This initial block generates button press events to trigger GPIO interrupts
   initial begin
     // Wait for system to stabilize after reset
-    #500;
+    #RESET_SETTLE_DELAY;
     
     // Wait additional cycles for software initialization
-    repeat(5000) @(posedge clk);
+    repeat(SW_INIT_CYCLES) @(posedge clk);
     
     $display("");
     $display("============================================================");
@@ -269,32 +275,32 @@ module tb_gpio_ext_irq();
     
     // Simulate button press sequence
     // Press Button U (rising edge trigger)
-    press_button(3'd0, 100);  // Press for 100 cycles
-    repeat(500) @(posedge clk);  // Wait between presses
+    press_button(3'd0, BUTTON_PRESS_CYCLES);
+    repeat(INTER_PRESS_CYCLES) @(posedge clk);
     
     // Press Button D
-    press_button(3'd1, 100);
-    repeat(500) @(posedge clk);
+    press_button(3'd1, BUTTON_PRESS_CYCLES);
+    repeat(INTER_PRESS_CYCLES) @(posedge clk);
     
     // Press Button L
-    press_button(3'd2, 100);
-    repeat(500) @(posedge clk);
+    press_button(3'd2, BUTTON_PRESS_CYCLES);
+    repeat(INTER_PRESS_CYCLES) @(posedge clk);
     
     // Press Button R
-    press_button(3'd3, 100);
-    repeat(500) @(posedge clk);
+    press_button(3'd3, BUTTON_PRESS_CYCLES);
+    repeat(INTER_PRESS_CYCLES) @(posedge clk);
     
     // Press Button C
-    press_button(3'd4, 100);
-    repeat(500) @(posedge clk);
+    press_button(3'd4, BUTTON_PRESS_CYCLES);
+    repeat(INTER_PRESS_CYCLES) @(posedge clk);
     
     // Random button presses
     $display("");
     $display("[%0t] Starting random button press sequence...", $time);
     
     repeat(10) begin
-      repeat($urandom_range(100, 500)) @(posedge clk);
-      press_button($urandom_range(0, 4), $urandom_range(50, 200));
+      repeat($urandom_range(BUTTON_PRESS_CYCLES, INTER_PRESS_CYCLES)) @(posedge clk);
+      press_button($urandom_range(0, 4), $urandom_range(BUTTON_PRESS_CYCLES/2, BUTTON_PRESS_CYCLES*2));
     end
     
     $display("");
@@ -371,6 +377,14 @@ module tb_gpio_ext_irq();
     $display("ITCM Memory Initialized");
     $display("ITCM 0x00: %h", `ITCM.mem_r[8'h00]);
     $display("ITCM 0x01: %h", `ITCM.mem_r[8'h01]);
+    $display("ITCM 0x02: %h", `ITCM.mem_r[8'h02]);
+    $display("ITCM 0x03: %h", `ITCM.mem_r[8'h03]);
+    $display("ITCM 0x04: %h", `ITCM.mem_r[8'h04]);
+    $display("ITCM 0x05: %h", `ITCM.mem_r[8'h05]);
+    $display("ITCM 0x06: %h", `ITCM.mem_r[8'h06]);
+    $display("ITCM 0x07: %h", `ITCM.mem_r[8'h07]);
+    $display("ITCM 0x16: %h", `ITCM.mem_r[8'h16]);
+    $display("ITCM 0x20: %h", `ITCM.mem_r[8'h20]);
   end
 
   // =========================================================================
