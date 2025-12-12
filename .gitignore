@@ -1,2 +1,8 @@
 riscv-tools/prebuilt_tools/prefix/*
 doc/build
+
+# Simulation artifacts
+*.exec
+*.vcd
+*.fsdb
+run_gpio_test/
