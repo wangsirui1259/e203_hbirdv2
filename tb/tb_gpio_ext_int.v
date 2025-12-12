@@ -54,8 +54,10 @@ module tb_gpio_ext_int();
   parameter BUTTON_HOLD_CYCLES = 1000;  // Hold button for 1000 cycles (4us at 250MHz)
   parameter INTER_BUTTON_CYCLES = 50000; // Wait 50K cycles between buttons for interrupt processing
   
-  // Button mask covering all button pins (GPIO[3:7])
-  localparam BUTTON_GPIO_MASK = 32'hF8;
+  // Additional timing parameters
+  parameter PROGRESS_REPORT_INTERVAL = 500000;  // Print progress every 500K cycles during wait
+  parameter PLIC_CONFIG_WAIT_CYCLES = 5000;     // Wait cycles after GPIO config for PLIC
+  parameter FORCE_CONFIG_PROPAGATION = 100;     // Cycles for forced values to propagate
 
   // GPIO bit definitions (matching board_ddr200t.h)
   localparam SOC_BUTTON_U_GPIO_OFS = 3;
@@ -71,12 +73,17 @@ module tb_gpio_ext_int();
   localparam SOC_LED_4_GPIO_OFS = 24;
   localparam SOC_LED_5_GPIO_OFS = 25;
 
-  // Button masks
+  // Button masks (individual and combined)
   localparam SOC_BUTTON_U_GPIO_MASK = (1 << SOC_BUTTON_U_GPIO_OFS);
   localparam SOC_BUTTON_D_GPIO_MASK = (1 << SOC_BUTTON_D_GPIO_OFS);
   localparam SOC_BUTTON_L_GPIO_MASK = (1 << SOC_BUTTON_L_GPIO_OFS);
   localparam SOC_BUTTON_R_GPIO_MASK = (1 << SOC_BUTTON_R_GPIO_OFS);
   localparam SOC_BUTTON_C_GPIO_MASK = (1 << SOC_BUTTON_C_GPIO_OFS);
+  
+  // Combined button mask covering all button pins (GPIO[3:7])
+  localparam BUTTON_GPIO_MASK = (SOC_BUTTON_U_GPIO_MASK | SOC_BUTTON_D_GPIO_MASK | 
+                                  SOC_BUTTON_L_GPIO_MASK | SOC_BUTTON_R_GPIO_MASK | 
+                                  SOC_BUTTON_C_GPIO_MASK);
 
   //==========================================================================
   // Clock and Reset Signals
@@ -240,8 +247,8 @@ module tb_gpio_ext_int();
       while ((gpio_inten == 32'b0) && (wait_count < timeout_cycles)) begin
         @(posedge clk);
         wait_count = wait_count + 1;
-        // Print progress every 500K cycles with PC info
-        if ((wait_count % 500000) == 0) begin
+        // Print progress periodically with PC info
+        if ((wait_count % PROGRESS_REPORT_INTERVAL) == 0) begin
           $display("[%0t] Still waiting... (%0d cycles, PC=0x%08h, gpio_inten=0x%08h)", 
                    $time, wait_count, pc, gpio_inten);
         end
@@ -251,7 +258,7 @@ module tb_gpio_ext_int();
         $display("[%0t] GPIO interrupt enable configured: 0x%08h (after %0d cycles)", $time, gpio_inten, wait_count);
         $display("[%0t] GPIO INTTYPE0: 0x%08h, INTTYPE1: 0x%08h", $time, gpio_inttype0, gpio_inttype1);
         // Wait a bit more for PLIC to be configured
-        repeat(5000) @(posedge clk);
+        repeat(PLIC_CONFIG_WAIT_CYCLES) @(posedge clk);
       end else begin
         $display("[%0t] WARNING: GPIO interrupt enable not configured after %0d cycles!", $time, wait_count);
         $display("[%0t] Current GPIO INTEN: 0x%08h, PC=0x%08h", $time, gpio_inten, pc);
@@ -273,8 +280,8 @@ module tb_gpio_ext_int();
       force `GPIOA_INTTYPE1 = BUTTON_GPIO_MASK;
       force `GPIOA_INTTYPE0 = 32'h0;
       
-      // Wait a few cycles for the forced values to propagate
-      repeat(100) @(posedge clk);
+      // Wait for forced values to propagate
+      repeat(FORCE_CONFIG_PROPAGATION) @(posedge clk);
       
       $display("[%0t] GPIO forced: INTEN=0x%08h, INTTYPE1=0x%08h, INTTYPE0=0x%08h", 
                $time, gpio_inten, gpio_inttype1, gpio_inttype0);
@@ -467,10 +474,10 @@ module tb_gpio_ext_int();
         
         $display("ITCM loaded from: %s.verilog", testcase);
         // Print first few ITCM entries for debugging
-        $display("ITCM 0x00: %h", `ITCM.mem_r[8'h00]);
-        $display("ITCM 0x01: %h", `ITCM.mem_r[8'h01]);
-        $display("ITCM 0x02: %h", `ITCM.mem_r[8'h02]);
-        $display("ITCM 0x03: %h", `ITCM.mem_r[8'h03]);
+        $display("ITCM[0]: %h", `ITCM.mem_r[0]);
+        $display("ITCM[1]: %h", `ITCM.mem_r[1]);
+        $display("ITCM[2]: %h", `ITCM.mem_r[2]);
+        $display("ITCM[3]: %h", `ITCM.mem_r[3]);
       end else begin
         $display("Warning: Could not open file %s.verilog - running without firmware", testcase);
       end
