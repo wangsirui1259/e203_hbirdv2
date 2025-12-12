@@ -1,8 +1,8 @@
 # Compile with Icarus Verilog
 iverilog -o gpio_tb.exec \
-    -I rtl/core/ \
-    -I rtl/perips/ \
-    -I rtl/perips/apb_i2c/ \
+    -I rtl/e203/core \
+    -I rtl/e203/perips \
+    -I rtl/e203/perips/apb_i2c \
     -D DISABLE_SV_ASSERTION=1 \
     -D iverilog \
     -g2005-sv \
