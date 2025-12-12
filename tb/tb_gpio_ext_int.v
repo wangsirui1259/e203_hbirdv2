@@ -53,6 +53,9 @@ module tb_gpio_ext_int();
   parameter INIT_WAIT_CYCLES = 5000000; // Wait 5M cycles for firmware init (~20ms at 250MHz)
   parameter BUTTON_HOLD_CYCLES = 1000;  // Hold button for 1000 cycles (4us at 250MHz)
   parameter INTER_BUTTON_CYCLES = 50000; // Wait 50K cycles between buttons for interrupt processing
+  
+  // Button mask covering all button pins (GPIO[3:7])
+  localparam BUTTON_GPIO_MASK = 32'hF8;
 
   // GPIO bit definitions (matching board_ddr200t.h)
   localparam SOC_BUTTON_U_GPIO_OFS = 3;
@@ -172,20 +175,30 @@ module tb_gpio_ext_int();
   // Button Press Simulation Tasks
   //==========================================================================
   
+  // Timing for force mode (much faster, since we're just testing hardware)
+  localparam FORCE_BUTTON_HOLD = 100;   // 100 cycles (400ns)
+  localparam FORCE_INTER_BUTTON = 500;  // 500 cycles (2us)
+  
   // Task: Simulate a button press (rising edge trigger)
   task press_button;
     input [4:0] button_offset;
     input [31:0] hold_cycles;
+    integer actual_hold;
+    integer actual_inter;
     begin
+      // Use shorter timing in force mode
+      actual_hold = force_gpio_mode ? FORCE_BUTTON_HOLD : hold_cycles;
+      actual_inter = force_gpio_mode ? FORCE_INTER_BUTTON : INTER_BUTTON_CYCLES;
+      
       $display("[%0t] Pressing button at GPIO[%0d]...", $time, button_offset);
       // Button press (rising edge)
       gpio_input[button_offset] = 1'b1;
-      repeat(hold_cycles) @(posedge clk);
+      repeat(actual_hold) @(posedge clk);
       // Button release (falling edge)
       gpio_input[button_offset] = 1'b0;
       $display("[%0t] Released button at GPIO[%0d]", $time, button_offset);
       // Wait for interrupt processing (enough time for ISR to execute)
-      repeat(INTER_BUTTON_CYCLES) @(posedge clk);
+      repeat(actual_inter) @(posedge clk);
     end
   endtask
 
@@ -246,6 +259,27 @@ module tb_gpio_ext_int();
       end
     end
   endtask
+  
+  // Task: Force-configure GPIO for interrupt testing (bypasses firmware)
+  // This is useful when the firmware takes too long to initialize
+  task force_gpio_config;
+    begin
+      $display("[%0t] Force-configuring GPIO for interrupt testing...", $time);
+      
+      // Force GPIO INTEN - enable interrupts on button pins (GPIO[3:7])
+      force `GPIOA_INTEN = BUTTON_GPIO_MASK;
+      
+      // Force GPIO INTTYPE1 - set for rising edge (INTTYPE1=1, INTTYPE0=0)
+      force `GPIOA_INTTYPE1 = BUTTON_GPIO_MASK;
+      force `GPIOA_INTTYPE0 = 32'h0;
+      
+      // Wait a few cycles for the forced values to propagate
+      repeat(100) @(posedge clk);
+      
+      $display("[%0t] GPIO forced: INTEN=0x%08h, INTTYPE1=0x%08h, INTTYPE0=0x%08h", 
+               $time, gpio_inten, gpio_inttype1, gpio_inttype0);
+    end
+  endtask
 
   //==========================================================================
   // Main Test Sequence
@@ -253,6 +287,7 @@ module tb_gpio_ext_int();
   reg [8*300:1] testcase;
   integer dumpwave;
   integer i;
+  reg force_gpio_mode;
 
   initial begin
     $display("================================================================");
@@ -264,6 +299,13 @@ module tb_gpio_ext_int();
     gpio_input = 32'b0;
     rst_n = 0;
     test_passed = 0;
+    force_gpio_mode = 0;
+    
+    // Check for force GPIO mode (bypasses firmware initialization)
+    if ($test$plusargs("FORCE_GPIO_CONFIG")) begin
+      force_gpio_mode = 1;
+      $display("FORCE_GPIO_CONFIG mode enabled - will force GPIO configuration");
+    end
     
     // Get testcase name if provided
     if ($value$plusargs("TESTCASE=%s", testcase)) begin
@@ -281,10 +323,17 @@ module tb_gpio_ext_int();
     $display("[%0t] Releasing reset...", $time);
     rst_n = 1;
     
-    // Wait for firmware to initialize GPIO and PLIC
-    // This is critical - the firmware must configure GPIO interrupt enable
-    // and PLIC before button presses will generate interrupts
-    wait_for_gpio_init(INIT_WAIT_CYCLES);
+    // Either wait for firmware or force-configure GPIO
+    if (force_gpio_mode) begin
+      // Wait a short time for reset to complete, then force GPIO config
+      repeat(1000) @(posedge clk);
+      force_gpio_config();
+    end else begin
+      // Wait for firmware to initialize GPIO and PLIC
+      // This is critical - the firmware must configure GPIO interrupt enable
+      // and PLIC before button presses will generate interrupts
+      wait_for_gpio_init(INIT_WAIT_CYCLES);
+    end
     
     // Start button press tests
     $display("[%0t] Starting GPIO interrupt tests...", $time);

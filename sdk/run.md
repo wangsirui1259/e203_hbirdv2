@@ -26,10 +26,21 @@ iverilog -o gpio_tb.exec \
 
 ## Run the Simulation
 
+### With Firmware
 ```bash
 mkdir -p run_gpio_test && cd run_gpio_test
 vvp ../gpio_tb.exec +TESTCASE=../sdk/demo_plic +DUMPWAVE=1
 ```
+
+### Quick Hardware Test (Force GPIO Configuration)
+For testing the GPIO interrupt hardware without waiting for firmware initialization:
+```bash
+mkdir -p run_gpio_test && cd run_gpio_test
+vvp ../gpio_tb.exec +FORCE_GPIO_CONFIG +DUMPWAVE=1
+```
+
+This mode forces the GPIO INTEN and INTTYPE registers to enable rising-edge interrupts
+on the button pins (GPIO[3:7]), allowing quick verification of the interrupt signal path.
 
 ## Simulation Parameters
 
@@ -38,6 +49,7 @@ The testbench accepts several plusargs:
 - `+TESTCASE=<path>`: Path to firmware hex file (without .verilog extension)
 - `+DUMPWAVE=1`: Enable waveform dump (creates .vcd file)
 - `+TIMEOUT=<cycles>`: Override simulation timeout (default: 100M cycles)
+- `+FORCE_GPIO_CONFIG`: Force GPIO configuration for quick hardware testing
 
 ## Important Notes
 
