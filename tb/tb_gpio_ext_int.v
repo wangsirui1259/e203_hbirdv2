@@ -26,8 +26,9 @@ module tb_gpio_ext_int();
   //==========================================================================
   // Parameters
   //==========================================================================
-  parameter CLK_PERIOD = 4;      // 250 MHz clock period (4ns)
-  parameter LFCLK_PERIOD = 66;   // ~15.15 MHz low frequency clock
+  parameter CLK_PERIOD = 4;             // 250 MHz clock period (4ns)
+  parameter LFCLK_PERIOD = 66;          // ~15.15 MHz low frequency clock
+  parameter TIMEOUT_CYCLES = 40000000;  // Simulation timeout (configurable via plusarg)
 
   // GPIO bit definitions (matching board_ddr200t.h)
   localparam SOC_BUTTON_U_GPIO_OFS = 3;
@@ -280,11 +281,16 @@ module tb_gpio_ext_int();
   //==========================================================================
   // Timeout Watchdog
   //==========================================================================
+  reg [31:0] timeout_value;
   initial begin
-    #40000000; // 40ms timeout
+    // Allow timeout to be configured via plusarg
+    if (!$value$plusargs("TIMEOUT=%d", timeout_value)) begin
+      timeout_value = TIMEOUT_CYCLES;
+    end
+    #timeout_value;
     $display("");
     $display("================================================================");
-    $display("  TIMEOUT - Test exceeded maximum simulation time");
+    $display("  TIMEOUT - Test exceeded maximum simulation time (%0d cycles)", timeout_value);
     $display("================================================================");
     $finish;
   end
@@ -299,12 +305,13 @@ module tb_gpio_ext_int();
           $display("VCS waveform dump enabled");
           $fsdbDumpfile("tb_gpio_ext_int.fsdb");
           $fsdbDumpvars(0, tb_gpio_ext_int, "+mda");
-        `endif
-
-        `ifdef iverilog
+        `elsif iverilog
           $display("Icarus Verilog waveform dump enabled");
           $dumpfile("tb_gpio_ext_int.vcd");
           $dumpvars(0, tb_gpio_ext_int);
+        `else
+          $display("Warning: Waveform dump not supported for this simulator");
+          $display("         Please add simulator-specific dump commands");
         `endif
       end
     end
@@ -323,24 +330,32 @@ module tb_gpio_ext_int();
   // ITCM Memory Initialization (Optional - load test program)
   //==========================================================================
   reg [7:0] itcm_mem [0:(`E203_ITCM_RAM_DP*8)-1];
+  integer file_handle;
   
   initial begin
-    // If a testcase file is provided, load it
-    if (testcase != "gpio_ext_int_test") begin
-      $readmemh({testcase, ".verilog"}, itcm_mem);
-      
-      for (i = 0; i < (`E203_ITCM_RAM_DP); i = i + 1) begin
-        `ITCM.mem_r[i][00+7:00] = itcm_mem[i*8+0];
-        `ITCM.mem_r[i][08+7:08] = itcm_mem[i*8+1];
-        `ITCM.mem_r[i][16+7:16] = itcm_mem[i*8+2];
-        `ITCM.mem_r[i][24+7:24] = itcm_mem[i*8+3];
-        `ITCM.mem_r[i][32+7:32] = itcm_mem[i*8+4];
-        `ITCM.mem_r[i][40+7:40] = itcm_mem[i*8+5];
-        `ITCM.mem_r[i][48+7:48] = itcm_mem[i*8+6];
-        `ITCM.mem_r[i][56+7:56] = itcm_mem[i*8+7];
+    // If a testcase file is provided via plusarg, try to load it
+    if ($test$plusargs("TESTCASE")) begin
+      // Check if the file exists by trying to open it
+      file_handle = $fopen({testcase, ".verilog"}, "r");
+      if (file_handle != 0) begin
+        $fclose(file_handle);
+        $readmemh({testcase, ".verilog"}, itcm_mem);
+        
+        for (i = 0; i < (`E203_ITCM_RAM_DP); i = i + 1) begin
+          `ITCM.mem_r[i][00+7:00] = itcm_mem[i*8+0];
+          `ITCM.mem_r[i][08+7:08] = itcm_mem[i*8+1];
+          `ITCM.mem_r[i][16+7:16] = itcm_mem[i*8+2];
+          `ITCM.mem_r[i][24+7:24] = itcm_mem[i*8+3];
+          `ITCM.mem_r[i][32+7:32] = itcm_mem[i*8+4];
+          `ITCM.mem_r[i][40+7:40] = itcm_mem[i*8+5];
+          `ITCM.mem_r[i][48+7:48] = itcm_mem[i*8+6];
+          `ITCM.mem_r[i][56+7:56] = itcm_mem[i*8+7];
+        end
+        
+        $display("ITCM loaded from: %s.verilog", testcase);
+      end else begin
+        $display("Warning: Could not open file %s.verilog - running without firmware", testcase);
       end
-      
-      $display("ITCM loaded from: %s.verilog", testcase);
     end
   end
 
